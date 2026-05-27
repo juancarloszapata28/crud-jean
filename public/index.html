@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Envío de Tareas - Proyecto Emmanuel</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f4f9; padding: 20px; display: flex; justify-content: center; }
+        .container { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); width: 500px; }
+        .oculto { display: none; }
+        input, button, textarea { width: 100%; padding: 10px; margin: 6px 0; box-sizing: border-box; border-radius: 4px; border: 1px solid #ccc; }
+        button { background: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; }
+        button:hover { background: #0056b3; }
+        
+        .password-group { position: relative; width: 100%; }
+        .password-group input { padding-right: 40px; }
+        .btn-ojo { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #333; cursor: pointer; width: auto; padding: 0; margin: 0; font-size: 18px; }
+        
+        .opciones-login { display: flex; justify-content: space-between; align-items: center; margin: 10px 0; font-size: 14px; }
+        .opciones-login input { width: auto; margin-right: 5px; }
+
+        .tarea-item { background: #f9f9f9; padding: 15px; margin: 10px 0; border-radius: 4px; border-left: 5px solid #28a745; position: relative; text-align: left; }
+        .btn-danger { background: #dc3545; width: auto; padding: 5px 10px; display: inline-block; margin-right: 5px; }
+        .btn-warning { background: #ffc107; color: black; width: auto; padding: 5px 10px; display: inline-block; }
+        .links-archivos a { display: block; margin: 5px 0; color: #007bff; text-decoration: none; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="seccion-auth">
+        <h2>Ingresar al Sistema de Tareas</h2>
+        <input type="text" id="username" placeholder="Usuario">
+        
+        <div class="password-group">
+            <input type="password" id="password" placeholder="Contraseña">
+            <button type="button" class="btn-ojo" onclick="alternarOjo(event)">👁️</button>
+        </div>
+
+        <div class="opciones-login">
+            <label><input type="checkbox" id="recordar"> Recordar contraseña</label>
+            <a href="#" onclick="alert('Comunícate con el administrador.')" style="color: #007bff; text-decoration: none;">¿Olvidaste tu contraseña?</a>
+        </div>
+
+        <button onclick="auth('login')">Iniciar Sesión</button>
+        <button onclick="auth('register')" style="background: #28a745;">Registrarse</button>
+        <p id="mensaje-auth" style="color: red; text-align: center;"></p>
+    </div>
+
+    <div id="seccion-app" class="oculto">
+        <h2 id="titulo-formulario">📤 Enviar Tarea al Profesor</h2>
+        <p>Estudiante: <b id="nombre-usuario"></b> | <a href="#" onclick="logout()">Salir</a></p>
+        
+        <div style="background: #e9ecef; padding: 15px; border-radius: 6px; margin-bottom: 20px; text-align: left;">
+            <input type="hidden" id="editando-id" value="">
+
+            <label><b>1. Nombre de la Tarea:</b></label>
+            <input type="text" id="titulo-tarea" placeholder="Ej: Tarea 1 de Historia">
+            
+            <label><b>2. Descripción o Comentarios:</b></label>
+            <textarea id="desc-tarea" placeholder="Escribe una nota para el profesor..."></textarea>
+            
+            <label><b>3. Enlace / Link (Opcional):</b></label>
+            <input type="url" id="link-tarea" placeholder="https://ejemplo.com">
+            
+            <label><b>4. Adjuntar Foto o Archivo de la PC:</b></label>
+            <input type="file" id="archivo-tarea">
+            <p id="archivo-actual-msg" style="font-size: 13px; color: #555; margin: 2px 0; font-weight: bold;"></p>
+            
+            <button id="btn-principal" onclick="guardarFormulario()" style="background: #28a745; margin-top: 10px;">🚀 Mandar Tarea al Profesor</button>
+            <button id="btn-cancelar" onclick="cancelarEdicion()" class="oculto" style="background: #6c757d; margin-top: 5px;">Cancelar Edición</button>
+        </div>
+
+        <h3>Entregas Realizadas</h3>
+        <div id="lista-tareas"></div>
+    </div>
+</div>
+
+<script>
+    function alternarOjo(e) {
+        if (e) e.preventDefault();
+        const passInput = document.getElementById('password');
+        passInput.type = passInput.type === 'password' ? 'text' : 'password';
+    }
+
+    async function auth(tipo) {
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        const res = await fetch(`/api/auth/${tipo}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+        const texto = await res.text();
+        if (res.ok) {
+            if (tipo === 'login') {
+                document.getElementById('seccion-auth').classList.add('oculto');
+                document.getElementById('seccion-app').classList.remove('oculto');
+                document.getElementById('nombre-usuario').innerText = username;
+                cargarTareas();
+            } else { alert("¡Registrado! Inicia sesión ahora."); }
+        } else { document.getElementById('mensaje-auth').innerText = texto; }
+    }
+
+    async function cargarTareas() {
+        const res = await fetch('/api/tareas');
+        if (!res.ok) return;
+        const tareas = await res.json();
+        const lista = document.getElementById('lista-tareas');
+        lista.innerHTML = '';
+        
+        if (tareas.length === 0) {
+            lista.innerHTML = '<p style="color: #666;">No hay tareas enviadas todavía.</p>';
+            return;
+        }
+
+        tareas.forEach(t => {
+            let botonArchivo = t.archivo ? `<a href="${t.archivo}" target="_blank">📄 Ver Archivo / Foto Adjunta</a>` : '';
+            let botonLink = t.link ? `<a href="${t.link}" target="_blank">🔗 Ver Link Enviado</a>` : '';
+
+            lista.innerHTML += `
+                <div class="tarea-item">
+                    <h4>${t.titulo}</h4>
+                    <p>${t.descripcion || 'Sin descripción'}</p>
+                    <div class="links-archivos">
+                        ${botonArchivo}
+                        ${botonLink}
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <button class="btn-warning" onclick="prepararEdicion(${t.id}, '${t.titulo}', '${t.descripcion || ''}', '${t.link || ''}', '${t.archivo || ''}')">✏️ Editar Todo</button>
+                        <button class="btn-danger" onclick="eliminarTarea(${t.id})">X Borrar</button>
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    // Decidir si guarda una nueva tarea o actualiza una existente
+    async function guardarFormulario() {
+        const id = document.getElementById('editando-id').value;
+        const titulo = document.getElementById('titulo-tarea').value;
+        const descripcion = document.getElementById('desc-tarea').value;
+        const link = document.getElementById('link-tarea').value;
+        const archivoInput = document.getElementById('archivo-tarea');
+
+        if (!titulo) return alert("Por favor, ponle un nombre a la tarea.");
+
+        const formData = new FormData();
+        formData.append('titulo', titulo);
+        formData.append('descripcion', descripcion);
+        formData.append('link', link);
+        if (archivoInput.files[0]) {
+            formData.append('archivo', archivoInput.files[0]);
+        }
+
+        let url = '/api/tareas';
+        let metodo = 'POST';
+
+        // Si el ID tiene algo, cambiamos a modo edición (PUT)
+        if (id) {
+            url = `/api/tareas/${id}`;
+            metodo = 'PUT';
+        }
+
+        const res = await fetch(url, {
+            method: metodo,
+            body: formData
+        });
+        
+        if(res.ok) {
+            cancelarEdicion();
+            cargarTareas();
+        } else {
+            alert("Error al procesar la tarea.");
+        }
+    }
+
+    // Sube los datos viejos al formulario para poder editarlos y cambiar el archivo
+    function prepararEdicion(id, titulo, descripcion, link, archivoRuta) {
+        document.getElementById('titulo-formulario').innerText = "✏️ Modificar Entrega Realizada";
+        document.getElementById('editando-id').value = id;
+        document.getElementById('titulo-tarea').value = titulo;
+        document.getElementById('desc-tarea').value = descripcion;
+        document.getElementById('link-tarea').value = link;
+        
+        if (archivoRuta && archivoRuta !== 'null') {
+            document.getElementById('archivo-actual-msg').innerText = "Archivo actual guardado. Sube otro si deseas reemplazarlo.";
+        } else {
+            document.getElementById('archivo-actual-msg').innerText = "";
+        }
+
+        document.getElementById('btn-principal').innerText = "💾 Guardar Cambios Corregidos";
+        document.getElementById('btn-principal').style.background = "#ffc107";
+        document.getElementById('btn-principal').style.color = "black";
+        document.getElementById('btn-cancelar').classList.remove('oculto');
+        
+        // Sube suavemente la pantalla al formulario
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function cancelarEdicion() {
+        document.getElementById('titulo-formulario').innerText = "📤 Enviar Tarea al Profesor";
+        document.getElementById('editando-id').value = "";
+        document.getElementById('titulo-tarea').value = "";
+        document.getElementById('desc-tarea').value = "";
+        document.getElementById('link-tarea').value = "";
+        document.getElementById('archivo-tarea').value = "";
+        document.getElementById('archivo-actual-msg').innerText = "";
+        
+        document.getElementById('btn-principal').innerText = "🚀 Mandar Tarea al Profesor";
+        document.getElementById('btn-principal').style.background = "#28a745";
+        document.getElementById('btn-principal').style.color = "white";
+        document.getElementById('btn-cancelar').classList.add('oculto');
+    }
+
+    async function eliminarTarea(id) {
+        if (confirm("¿Estás seguro de que quieres borrar esta entrega?")) {
+            await fetch(`/api/tareas/${id}`, { method: 'DELETE' });
+            cargarTareas();
+        }
+    }
+
+    async function logout() {
+        await fetch('/api/auth/logout', { method: 'POST' });
+        location.reload();
+    }
+</script>
+</body>
+</html>
